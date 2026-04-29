@@ -7,15 +7,15 @@ import tempfile
 from pipe import run_pipeline
 
 # =========================
-# PAGE CONFIG (IMPORTANT)
+# PAGE CONFIG
 # =========================
 st.set_page_config(
     page_title="AutoML Analyzer",
-    layout="centered"   # 🔥 mobile friendly (NOT wide)
+    layout="centered"
 )
 
 # =========================
-# 🔒 ADMIN PANEL
+# ADMIN PANEL
 # =========================
 st.sidebar.markdown("### 🔒 Admin Panel")
 
@@ -32,46 +32,16 @@ if admin_mode:
         st.sidebar.error("Wrong Password")
 
 # =========================
-# 🎨 CLEAN MOBILE CSS
+# MOBILE CSS
 # =========================
 st.markdown("""
 <style>
-/* Global */
-body {
-    background-color: #eef5ff;
-}
-
-/* Reduce padding for mobile */
 .block-container {
-    padding-top: 1rem;
-    padding-bottom: 1rem;
-    padding-left: 1rem;
-    padding-right: 1rem;
+    padding: 0.8rem;
 }
-
-/* Buttons full width */
 button[kind="primary"] {
     width: 100% !important;
-    border-radius: 10px !important;
-}
-
-/* Cards */
-.card {
-    background: white;
-    padding: 14px;
-    border-radius: 12px;
-    box-shadow: 0px 3px 10px rgba(0,0,0,0.08);
-    margin-bottom: 12px;
-}
-
-/* Headings */
-h1, h2, h3 {
-    color: #1f3c5b !important;
-}
-
-/* DataFrame scroll fix */
-.stDataFrame {
-    overflow-x: auto;
+    border-radius: 12px !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -80,71 +50,72 @@ h1, h2, h3 {
 # HEADER
 # =========================
 st.title("🤖 AutoML Analyzer")
-st.caption("Upload → Analyze → Get Results")
 
 # =========================
-# 📂 FILE SECTION
+# STATE
 # =========================
-with st.container():
-    st.subheader("📂 Upload Dataset")
+if "df" not in st.session_state:
+    st.session_state.df = None
+
+if "result" not in st.session_state:
+    st.session_state.result = None
+
+# =========================
+# TABS (MOBILE NAVIGATION)
+# =========================
+tab1, tab2, tab3 = st.tabs(["📂 Upload", "⚙️ Setup", "📊 Results"])
+
+# =========================
+# 📂 TAB 1: UPLOAD
+# =========================
+with tab1:
+    st.subheader("Upload Dataset")
 
     uploaded_file = st.file_uploader(
         "Choose file",
         type=["csv", "xlsx", "xls", "docx"]
     )
 
-df = None
-target = None
-valid_file = True
+    if uploaded_file:
+        file_ext = uploaded_file.name.split(".")[-1].lower()
 
-# =========================
-# FILE PROCESSING
-# =========================
-if uploaded_file:
+        if file_ext == "csv":
+            try:
+                df = pd.read_csv(uploaded_file)
+            except:
+                uploaded_file.seek(0)
+                df = pd.read_csv(uploaded_file, encoding="latin1")
 
-    file_ext = uploaded_file.name.split(".")[-1].lower()
+        elif file_ext in ["xlsx", "xls"]:
+            df = pd.read_excel(uploaded_file)
 
-    if file_ext not in ["csv", "xlsx", "xls", "docx"]:
-        st.error("Unsupported file type.")
-        valid_file = False
-
-    elif file_ext == "docx":
-        try:
+        elif file_ext == "docx":
             from docx import Document
             doc = Document(uploaded_file)
+            data = [[cell.text.strip() for cell in row.cells] for row in doc.tables[0].rows]
+            df = pd.DataFrame(data[1:], columns=data[0])
 
-            if not doc.tables:
-                st.error("No table found in Word file.")
-                valid_file = False
-            else:
-                data = [[cell.text.strip() for cell in row.cells] for row in doc.tables[0].rows]
-                df = pd.DataFrame(data[1:], columns=data[0])
+        else:
+            st.error("Unsupported file")
+            df = None
 
-        except ImportError:
-            st.error("Install python-docx")
-            valid_file = False
+        if df is not None:
+            st.session_state.df = df
+            st.success("File loaded successfully")
 
-    elif file_ext == "csv":
-        try:
-            df = pd.read_csv(uploaded_file, encoding="utf-8")
-        except:
-            uploaded_file.seek(0)
-            df = pd.read_csv(uploaded_file, encoding="latin1")
-
+# =========================
+# ⚙️ TAB 2: SETUP
+# =========================
+with tab2:
+    if st.session_state.df is None:
+        st.info("Upload dataset first")
     else:
-        df = pd.read_excel(uploaded_file)
+        df = st.session_state.df.copy()
 
-# =========================
-# DATA PREVIEW + OPTIONS
-# =========================
-if valid_file and df is not None:
+        st.subheader("Preview")
+        st.dataframe(df.head(), use_container_width=True)
 
-    st.subheader("🔍 Data Preview")
-    st.dataframe(df.head(), use_container_width=True)
-
-    with st.expander("⚙️ Data Settings"):
         drop_cols = st.multiselect("Drop Columns", df.columns)
-
         if drop_cols:
             df = df.drop(columns=drop_cols)
 
@@ -152,42 +123,38 @@ if valid_file and df is not None:
         if target == "None":
             target = None
 
-# =========================
-# 🚀 RUN BUTTON
-# =========================
-run = st.button("🚀 Start Analysis", use_container_width=True)
+        if st.button("🚀 Run Analysis"):
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+                df.to_csv(tmp.name, index=False)
+                file_path = tmp.name
+
+            result = run_pipeline(file_path, target)
+
+            if "error" in result:
+                st.error(result["error"])
+            else:
+                st.session_state.result = result
+                save_result("uploaded_file", result)
+                st.success("Analysis completed")
 
 # =========================
-# RESULT SECTION
+# 📊 TAB 3: RESULTS
 # =========================
-if uploaded_file and run and valid_file and df is not None:
-
-    if target is None:
-        st.info("Running Clustering Mode")
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
-        df.to_csv(tmp.name, index=False)
-        file_path = tmp.name
-
-    result = run_pipeline(file_path, target)
-
-    if "error" in result:
-        st.error(result["error"])
-
+with tab3:
+    if st.session_state.result is None:
+        st.info("Run analysis first")
     else:
-        save_result(uploaded_file.name, result)
+        result = st.session_state.result
 
-        # ===== RESULT CARD =====
-        st.markdown("### 📊 Results")
+        st.subheader("Result Summary")
 
         st.success(f"""
-        **Problem Type:** {result['problem_type']}  
-        **Best Model:** {result['best_model']}  
-        **Score:** {round(result['score'], 4)}
+        Problem Type: {result['problem_type']}
+        Best Model: {result['best_model']}
+        Score: {round(result['score'], 4)}
         """)
 
-        # ===== MODEL TABLE =====
-        st.subheader("📈 Model Comparison")
+        st.subheader("Model Comparison")
 
         results = result.get("all_results", {})
         results = {k: v for k, v in results.items() if "BEST" not in k}
@@ -196,38 +163,23 @@ if uploaded_file and run and valid_file and df is not None:
             df_models = pd.DataFrame(results.items(), columns=["Model", "Score"])
             st.dataframe(df_models.sort_values(by="Score", ascending=False), use_container_width=True)
 
-        # ===== INSIGHTS =====
-        st.subheader("🧠 Insights")
-        st.write(result.get("insights", ""))
-
-        # ===== VISUALS =====
-        st.subheader("📊 Visualizations")
+        with st.expander("🧠 Insights"):
+            st.write(result.get("insights", ""))
 
         if result.get("plots"):
             for fig in result["plots"]:
                 st.pyplot(fig, use_container_width=True)
-        else:
-            st.info("No plots generated")
 
 # =========================
 # ADMIN HISTORY
 # =========================
 if admin_authenticated:
-
-    st.subheader("🧠 Admin History")
+    st.subheader("Admin History")
 
     history = get_history()
 
     if history:
         df_history = pd.DataFrame(history)
-
-        if df_history.shape[1] == 6:
-            df_history.columns = ["ID", "Dataset", "Problem Type", "Best Model", "Score", "Timestamp"]
-            df_history = df_history.drop(columns=["ID"])
-        else:
-            df_history.columns = ["Dataset", "Problem Type", "Best Model", "Score", "Timestamp"]
-
-        st.dataframe(df_history.sort_values(by="Timestamp", ascending=False), use_container_width=True)
-
+        st.dataframe(df_history, use_container_width=True)
     else:
         st.info("No history found.")
