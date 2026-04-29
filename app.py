@@ -6,7 +6,13 @@ import pandas as pd
 import tempfile
 from pipe import run_pipeline
 
-st.set_page_config(page_title="AutoML Analyzer", layout="wide")
+# =========================
+# PAGE CONFIG (IMPORTANT)
+# =========================
+st.set_page_config(
+    page_title="AutoML Analyzer",
+    layout="centered"   # 🔥 mobile friendly (NOT wide)
+)
 
 # =========================
 # 🔒 ADMIN PANEL
@@ -26,136 +32,98 @@ if admin_mode:
         st.sidebar.error("Wrong Password")
 
 # =========================
-# 🎨 CLEAN UI STYLE (FIXED COLORS)
+# 🎨 CLEAN MOBILE CSS
 # =========================
 st.markdown("""
 <style>
-html, body, p, div, span, label {
-    color: #1a1a1a !important;
-}
-
-/* ===== SIDEBAR ===== */
-section[data-testid="stSidebar"] {
-    background-color: #1e1e2f !important;
-}
-
-section[data-testid="stSidebar"] * {
-    color: #ffffff !important;
-}
-
-/* ===== MAIN BACKGROUND ===== */
-.stApp {
+/* Global */
+body {
     background-color: #eef5ff;
 }
 
-/* ===== CARDS ===== */
+/* Reduce padding for mobile */
+.block-container {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+}
+
+/* Buttons full width */
+button[kind="primary"] {
+    width: 100% !important;
+    border-radius: 10px !important;
+}
+
+/* Cards */
 .card {
     background: white;
-    padding: 18px;
+    padding: 14px;
     border-radius: 12px;
-    box-shadow: 0px 4px 12px rgba(0,0,0,0.08);
+    box-shadow: 0px 3px 10px rgba(0,0,0,0.08);
+    margin-bottom: 12px;
 }
 
-/* ===== BUTTONS ===== */
-button {
-    color: white !important;
-    background-color: #007bff !important;
-    border-radius: 8px !important;
-}
-
-/* ===== TABLE (VERY IMPORTANT) ===== */
-.stDataFrame table {
-    background-color: white !important;
-    color: black !important;
-}
-
-.stDataFrame th {
-    background-color: #007bff !important;
-    color: white !important;
-    font-weight: bold;
-}
-
-.stDataFrame td {
-    color: black !important;
-}
-
-/* ===== ALERTS ===== */
-div[data-testid="stAlert"] {
-    color: black !important;
-    font-weight: 500;
-    border-radius: 8px;
-}
-
-div[data-testid="stAlert"][kind="warning"] {
-    background-color: #fff3cd !important;
-    border-left: 6px solid #ffcc00 !important;
-}
-
-div[data-testid="stAlert"][kind="error"] {
-    background-color: #f8d7da !important;
-    border-left: 6px solid #dc3545 !important;
-}
-
-div[data-testid="stAlert"][kind="info"] {
-    background-color: #d1ecf1 !important;
-    border-left: 6px solid #17a2b8 !important;
-}
-
-/* ===== HEADINGS ===== */
+/* Headings */
 h1, h2, h3 {
     color: #1f3c5b !important;
 }
 
+/* DataFrame scroll fix */
+.stDataFrame {
+    overflow-x: auto;
+}
 </style>
 """, unsafe_allow_html=True)
 
 # =========================
 # HEADER
 # =========================
-st.title("🤖 AI AutoML Analyzer")
-st.caption("Smart Machine Learning Analysis")
+st.title("🤖 AutoML Analyzer")
+st.caption("Upload → Analyze → Get Results")
 
 # =========================
-# FILE UPLOAD
+# 📂 FILE SECTION
 # =========================
-st.markdown('<div class="card">', unsafe_allow_html=True)
+with st.container():
+    st.subheader("📂 Upload Dataset")
 
-uploaded_file = st.file_uploader(
-    "📂 Upload Dataset",
-    type=["csv", "xlsx", "xls", "docx"]
-)
+    uploaded_file = st.file_uploader(
+        "Choose file",
+        type=["csv", "xlsx", "xls", "docx"]
+    )
 
 df = None
 target = None
 valid_file = True
 
+# =========================
+# FILE PROCESSING
+# =========================
 if uploaded_file:
 
     file_ext = uploaded_file.name.split(".")[-1].lower()
 
-    # ===== INVALID FILE =====
     if file_ext not in ["csv", "xlsx", "xls", "docx"]:
         st.error("Unsupported file type.")
         valid_file = False
 
-    # ===== DOCX =====
     elif file_ext == "docx":
         try:
             from docx import Document
             doc = Document(uploaded_file)
 
             if not doc.tables:
-                st.error("Word file does not contain a dataset table.")
+                st.error("No table found in Word file.")
                 valid_file = False
             else:
                 data = [[cell.text.strip() for cell in row.cells] for row in doc.tables[0].rows]
                 df = pd.DataFrame(data[1:], columns=data[0])
 
         except ImportError:
-            st.error("python-docx not installed. Run: pip install python-docx")
+            st.error("Install python-docx")
             valid_file = False
 
-    # ===== CSV =====
     elif file_ext == "csv":
         try:
             df = pd.read_csv(uploaded_file, encoding="utf-8")
@@ -163,17 +131,20 @@ if uploaded_file:
             uploaded_file.seek(0)
             df = pd.read_csv(uploaded_file, encoding="latin1")
 
-    # ===== EXCEL =====
     else:
         df = pd.read_excel(uploaded_file)
 
-    # ===== SHOW DATA ONLY IF VALID =====
-    if valid_file and df is not None:
+# =========================
+# DATA PREVIEW + OPTIONS
+# =========================
+if valid_file and df is not None:
 
-        st.subheader("Preview")
-        st.dataframe(df.head())
+    st.subheader("🔍 Data Preview")
+    st.dataframe(df.head(), use_container_width=True)
 
+    with st.expander("⚙️ Data Settings"):
         drop_cols = st.multiselect("Drop Columns", df.columns)
+
         if drop_cols:
             df = df.drop(columns=drop_cols)
 
@@ -181,11 +152,13 @@ if uploaded_file:
         if target == "None":
             target = None
 
-run = st.button("🚀 Start Analysis")
-st.markdown('</div>', unsafe_allow_html=True)
+# =========================
+# 🚀 RUN BUTTON
+# =========================
+run = st.button("🚀 Start Analysis", use_container_width=True)
 
 # =========================
-# RUN MODEL
+# RESULT SECTION
 # =========================
 if uploaded_file and run and valid_file and df is not None:
 
@@ -200,39 +173,44 @@ if uploaded_file and run and valid_file and df is not None:
 
     if "error" in result:
         st.error(result["error"])
+
     else:
         save_result(uploaded_file.name, result)
 
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Problem Type", result["problem_type"])
-        col2.metric("Best Model", result["best_model"])
-        col3.metric("Score", round(result["score"], 4))
+        # ===== RESULT CARD =====
+        st.markdown("### 📊 Results")
 
-        # MODEL COMPARISON
-        st.subheader("📊 Model Comparison")
+        st.success(f"""
+        **Problem Type:** {result['problem_type']}  
+        **Best Model:** {result['best_model']}  
+        **Score:** {round(result['score'], 4)}
+        """)
+
+        # ===== MODEL TABLE =====
+        st.subheader("📈 Model Comparison")
 
         results = result.get("all_results", {})
         results = {k: v for k, v in results.items() if "BEST" not in k}
 
         if results:
             df_models = pd.DataFrame(results.items(), columns=["Model", "Score"])
-            st.dataframe(df_models.sort_values(by="Score", ascending=False))
+            st.dataframe(df_models.sort_values(by="Score", ascending=False), use_container_width=True)
 
-        # INSIGHTS
-        st.subheader("📄 Insights")
+        # ===== INSIGHTS =====
+        st.subheader("🧠 Insights")
         st.write(result.get("insights", ""))
 
-        # VISUALS
-        st.subheader("📈 Visualizations")
+        # ===== VISUALS =====
+        st.subheader("📊 Visualizations")
 
         if result.get("plots"):
             for fig in result["plots"]:
-                st.pyplot(fig)
+                st.pyplot(fig, use_container_width=True)
         else:
             st.info("No plots generated")
 
 # =========================
-# ADMIN HISTORY (FIXED)
+# ADMIN HISTORY
 # =========================
 if admin_authenticated:
 
@@ -241,17 +219,15 @@ if admin_authenticated:
     history = get_history()
 
     if history:
-
         df_history = pd.DataFrame(history)
 
-        # HANDLE BOTH CASES (5 or 6 columns)
         if df_history.shape[1] == 6:
             df_history.columns = ["ID", "Dataset", "Problem Type", "Best Model", "Score", "Timestamp"]
             df_history = df_history.drop(columns=["ID"])
         else:
             df_history.columns = ["Dataset", "Problem Type", "Best Model", "Score", "Timestamp"]
 
-        st.dataframe(df_history.sort_values(by="Timestamp", ascending=False))
+        st.dataframe(df_history.sort_values(by="Timestamp", ascending=False), use_container_width=True)
 
     else:
         st.info("No history found.")
