@@ -101,6 +101,7 @@ with tab1:
 
         if df is not None:
             st.session_state.df = df
+            st.session_state.filename = uploaded_file.name
             st.success("File loaded successfully")
 
 # =========================
@@ -134,7 +135,7 @@ with tab2:
                 st.error(result["error"])
             else:
                 st.session_state.result = result
-                save_result("uploaded_file", result)
+                save_result(st.session_state.filename, result)
                 st.success("Analysis completed")
 
 # =========================
@@ -173,13 +174,33 @@ with tab3:
 # =========================
 # ADMIN HISTORY
 # =========================
+# =========================
+# ADMIN HISTORY
+# =========================
 if admin_authenticated:
+
     st.subheader("Admin History")
 
     history = get_history()
 
     if history:
-        df_history = pd.DataFrame(history)
-        st.dataframe(df_history, use_container_width=True)
+
+        df_history = pd.DataFrame(
+            history,
+            columns=[
+                "Dataset",
+                "Problem Type",
+                "Best Model",
+                "Score",
+                "Timestamp"
+            ]
+        )
+
+        st.dataframe(
+            df_history,
+            use_container_width=True,
+            hide_index=True
+        )
+
     else:
         st.info("No history found.")
