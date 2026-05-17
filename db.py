@@ -54,7 +54,12 @@ def get_history():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
 
-    c.execute("SELECT * FROM history ORDER BY id DESC")
+    c.execute("""
+        SELECT dataset_name, problem_type, best_model, score, timestamp
+        FROM history
+        ORDER BY id DESC
+    """)
+
     data = c.fetchall()
 
     conn.close()
