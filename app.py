@@ -173,10 +173,6 @@ with tab3:
 
 # =========================
 # ADMIN HISTORY
-# =========================
-# =========================
-# ADMIN HISTORY
-# =========================
 if admin_authenticated:
 
     st.subheader("Admin History")
@@ -185,16 +181,30 @@ if admin_authenticated:
 
     if history:
 
-        df_history = pd.DataFrame(
-            history,
-            columns=[
+        df_history = pd.DataFrame(history)
+
+        # Handle old DB rows with ID column
+        if df_history.shape[1] == 6:
+            df_history.columns = [
+                "ID",
                 "Dataset",
                 "Problem Type",
                 "Best Model",
                 "Score",
                 "Timestamp"
             ]
-        )
+
+            df_history = df_history.drop(columns=["ID"])
+
+        # Handle clean/new DB rows
+        elif df_history.shape[1] == 5:
+            df_history.columns = [
+                "Dataset",
+                "Problem Type",
+                "Best Model",
+                "Score",
+                "Timestamp"
+            ]
 
         st.dataframe(
             df_history,
